@@ -65,6 +65,10 @@ body{grid-template-rows:auto auto minmax(0,1fr)}
 @media(max-width:720px){.road-tools{top:10px;max-width:calc(100% - 124px)}}
 
 .road-marker:not(.incident):not(.closed){font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:19px;line-height:24px}
+
+/* White background for the custom warning-triangle marker. */
+.road-marker:not(.incident):not(.closed),
+.road-marker:not(.incident):not(.closed):hover{background:#ffffff}
 </style></head><body>
 <header><div><h1>Calgary Traffic Cameras</h1><p>A clearer view of your route.</p></div><span class="badge">CITY CAMERA NETWORK</span></header>
 <div class="toolbar"><div class="search-wrap"><input id="search" type="search" aria-label="Search camera locations" placeholder="Search road…"><button id="clearSearch" type="button" aria-label="Clear filters and show all cameras" title="Clear filters and show all cameras" hidden>×</button></div><select id="quadrant" aria-label="Filter by quadrant"><option value="">All areas</option><option>NW</option><option>NE</option><option>SW</option><option>SE</option></select><button id="listToggle" aria-expanded="false">Cameras</button><button id="reload" type="button" aria-label="Reset view and reload camera data" title="Reset view and reload camera data"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.3 5.7M20 7v5"/></svg></button></div>
@@ -72,7 +76,7 @@ body{grid-template-rows:auto auto minmax(0,1fr)}
 <footer>Camera data &amp; images: <a href="https://data.calgary.ca/Transportation-Transit/Traffic-Cameras/k7p9-kppz/about_data" target="_blank" rel="noopener noreferrer">City of Calgary Open Data</a> · <a href="https://www.calgary.ca/roads/conditions/traffic-cameras.html" target="_blank" rel="noopener noreferrer">Official cameras</a> · Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · <a href="https://maplibre.org/" target="_blank" rel="noopener noreferrer">MapLibre</a> · Internet required.</footer>
 <div class="road-tools"><label><input id="showRoadworks" type="checkbox" checked>Roadworks</label><label><input id="showIncidents" type="checkbox" checked>Incidents</label><button id="alertsList" type="button">Alerts</button></div><dialog id="roadDialog" aria-labelledby="roadTitle"><div class="road-head"><h2 id="roadTitle">Road alerts</h2><button id="roadClose" aria-label="Close road alerts">×</button></div><p id="roadStatus" role="status"></p><div id="roadContent"></div><p class="road-note">City of Calgary reports may be delayed. Markers indicate reported locations, not exact closure extents. Check dates, daily schedules and on-site signs. Planned works may not be active at every hour.</p><a href="https://maps.calgary.ca/TrafficInformation/" target="_blank" rel="noopener noreferrer">Official traffic map ↗</a></dialog><section id="viewer" hidden aria-label="Selected camera"><div class="viewer-head"><h2 id="cameraTitle"></h2><button id="close" aria-label="Close camera">×</button></div><div class="picture"><img id="photo" alt="" hidden><div id="imageState" role="status">Loading latest image…</div></div><div class="viewer-body"><div class="actions"><button id="refresh">Refresh image</button><a id="original" target="_blank" rel="noopener noreferrer">Open image ↗</a><label class="toggle"><input id="auto" type="checkbox" checked>Auto · 30s</label></div><p id="imageTime" aria-live="polite"></p><p>Latest available still image, not live video. Load time is not capture time. Cameras may be delayed or temporarily offline.</p></div></section></div></main>
 
-<span id="version" aria-label="Version 1.2.2">v1.2.2</span>
+<span id="version" aria-label="Version 1.2.3">v1.2.3</span>
 <script src="./maplibre-gl.js"></script>
 <script>
 'use strict';

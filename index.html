@@ -144,7 +144,7 @@ function buildingStatus(){if($('mapMode').value!=='3d')return;if(!buildingModeVi
 function initBuildings(){
  $('mapMode').disabled=false;map.setMaxPitch(70);
  map.addSource('city-buildings',{type:'geojson',data:emptyBuildings()});
- map.addLayer({id:'city-buildings',type:'fill-extrusion',source:'city-buildings',minzoom:14.8,layout:{visibility:'none'},paint:{'fill-extrusion-color':'#8aafb1','fill-extrusion-height':['get','height'],'fill-extrusion-base':0,'fill-extrusion-opacity':0.85,'fill-extrusion-vertical-gradient':true}},'clusters');
+ map.addLayer({id:'city-buildings',type:'fill-extrusion',source:'city-buildings',minzoom:14.8,layout:{visibility:'none'},paint:{'fill-extrusion-color':'#d3d3d3','fill-extrusion-height':['get','height'],'fill-extrusion-base':0,'fill-extrusion-opacity':0.85,'fill-extrusion-vertical-gradient':true}},'clusters');
  map.on('zoom',updateBuildingVisibility);
  map.on('moveend',()=>{clearTimeout(buildingDebounce);updateBuildingVisibility();buildingDebounce=setTimeout(loadBuildings,300)});
  setMode();

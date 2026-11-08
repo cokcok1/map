@@ -76,7 +76,7 @@ body{grid-template-rows:auto auto minmax(0,1fr)}
 <footer>Camera data &amp; images: <a href="https://data.calgary.ca/Transportation-Transit/Traffic-Cameras/k7p9-kppz/about_data" target="_blank" rel="noopener noreferrer">City of Calgary Open Data</a> · <a href="https://www.calgary.ca/roads/conditions/traffic-cameras.html" target="_blank" rel="noopener noreferrer">Official cameras</a> · Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · <a href="https://maplibre.org/" target="_blank" rel="noopener noreferrer">MapLibre</a> · Internet required.</footer>
 <div class="road-tools"><label><input id="showRoadworks" type="checkbox" checked>Roadworks</label><label><input id="showIncidents" type="checkbox" checked>Incidents</label><button id="alertsList" type="button">Alerts</button></div><dialog id="roadDialog" aria-labelledby="roadTitle"><div class="road-head"><h2 id="roadTitle">Road alerts</h2><button id="roadClose" aria-label="Close road alerts">×</button></div><p id="roadStatus" role="status"></p><div id="roadContent"></div><p class="road-note">City of Calgary reports may be delayed. Markers indicate reported locations, not exact closure extents. Check dates, daily schedules and on-site signs. Planned works may not be active at every hour.</p><a href="https://maps.calgary.ca/TrafficInformation/" target="_blank" rel="noopener noreferrer">Official traffic map ↗</a></dialog><section id="viewer" hidden aria-label="Selected camera"><div class="viewer-head"><h2 id="cameraTitle"></h2><button id="close" aria-label="Close camera">×</button></div><div class="picture"><img id="photo" alt="" hidden><div id="imageState" role="status">Loading latest image…</div></div><div class="viewer-body"><div class="actions"><button id="refresh">Refresh image</button><a id="original" target="_blank" rel="noopener noreferrer">Open image ↗</a><label class="toggle"><input id="auto" type="checkbox" checked>Auto · 30s</label></div><p id="imageTime" aria-live="polite"></p><p>Latest available still image, not live video. Load time is not capture time. Cameras may be delayed or temporarily offline.</p></div></section></div></main>
 
-<span id="version" aria-label="Version 1.2.3">v1.2.3</span>
+<span id="version" aria-label="Version 1.3.0">v1.3.0</span>
 <script src="./maplibre-gl.js"></script>
 <script>
 'use strict';
@@ -132,55 +132,38 @@ loadRoadAlerts();setInterval(()=>{if(!document.hidden)loadRoadAlerts()},300000);
 
 // Buildings are extruded footprints, not the full Multipatch roof mesh.
 // Only fetch a bounded area at street-level zoom. Superseded requests are aborted.
-let buildingController=null,buildingSequence=0,buildingDebounce=null;
+// Session-only bounded building cache. Panning never clears the loaded source.
+const BUILDING_GRID={lng:0.006,lat:0.004},BUILDING_MAX_TILES=64,BUILDING_MAX_FEATURES=24000,BUILDING_MAX_VERTICES=400000;
+const buildingTiles=new Map(),buildingPending=new Set();
+let buildingQueue=[],buildingWanted=new Set(),buildingWorkers=0,buildingDebounce=null,buildingClock=0,buildingFailures=0,buildingShown=0;
 const emptyBuildings=()=>({type:'FeatureCollection',features:[]});
 function buildingMessage(s){$('buildingStatus').textContent=s}
+function buildingModeVisible(){return mapReady&&$('mapMode').value==='3d'&&map.getZoom()>=14.8}
+function updateBuildingVisibility(){if(mapReady)map.setLayoutProperty('city-buildings','visibility',buildingModeVisible()?'visible':'none')}
+function buildingStatus(){if($('mapMode').value!=='3d')return;if(!buildingModeVisible()){buildingMessage('Zoom in to see 3D buildings · Loaded buildings kept in memory.');return}buildingMessage(`${buildingShown.toLocaleString('en-CA')} cached building shapes · ${buildingWorkers||buildingQueue.length?'Loading new areas…':buildingFailures?'Some areas unavailable; pan to retry.':'Simplified heights · Pan to load more'}`)}
 function initBuildings(){
  $('mapMode').disabled=false;map.setMaxPitch(70);
  map.addSource('city-buildings',{type:'geojson',data:emptyBuildings()});
- map.addLayer({id:'city-buildings',type:'fill-extrusion',source:'city-buildings',minzoom:14,layout:{visibility:'none'},paint:{'fill-extrusion-color':'#8aafb1','fill-extrusion-height':['get','height'],'fill-extrusion-base':0,'fill-extrusion-opacity':0.85,'fill-extrusion-vertical-gradient':true}},'clusters');
- map.on('moveend',()=>{clearTimeout(buildingDebounce);buildingDebounce=setTimeout(loadBuildings,450)});
+ map.addLayer({id:'city-buildings',type:'fill-extrusion',source:'city-buildings',minzoom:14.8,layout:{visibility:'none'},paint:{'fill-extrusion-color':'#8aafb1','fill-extrusion-height':['get','height'],'fill-extrusion-base':0,'fill-extrusion-opacity':0.85,'fill-extrusion-vertical-gradient':true}},'clusters');
+ map.on('zoom',updateBuildingVisibility);
+ map.on('moveend',()=>{clearTimeout(buildingDebounce);updateBuildingVisibility();buildingDebounce=setTimeout(loadBuildings,300)});
  setMode();
 }
 function setMode(){
- const is3d=$('mapMode').value==='3d';$('mapMode').textContent=is3d?'2D':'3D';$('mapMode').setAttribute('aria-pressed',String(is3d));$('mapMode').setAttribute('aria-label',is3d?'Switch to 2D map':'Switch to 3D buildings');$('mapMode').title=is3d?'Switch to 2D map':'Switch to 3D buildings';
- $('buildingStatus').hidden=!is3d;
+ const is3d=$('mapMode').value==='3d';$('mapMode').textContent=is3d?'2D':'3D';$('mapMode').setAttribute('aria-pressed',String(is3d));$('mapMode').setAttribute('aria-label',is3d?'Switch to 2D map':'Switch to 3D buildings');$('mapMode').title=is3d?'Switch to 2D map':'Switch to 3D buildings';$('buildingStatus').hidden=!is3d;
  if(!mapReady){if(is3d)buildingMessage('3D requires a working WebGL map.');return}
- map.setLayoutProperty('city-buildings','visibility',is3d?'visible':'none');
- if(buildingController)buildingController.abort();++buildingSequence;
- if(is3d){buildingMessage('Zoom in to see City of Calgary buildings.');map.easeTo({pitch:58,zoom:Math.max(map.getZoom(),15),duration:800});}
- else{map.getSource('city-buildings').setData(emptyBuildings());if(map.getPitch())map.easeTo({pitch:0,duration:700});}
+ updateBuildingVisibility();
+ if(is3d){publishBuildings();buildingStatus();map.easeTo({pitch:58,zoom:Math.max(map.getZoom(),15),duration:800});loadBuildings();}
+ else{buildingQueue=[];if(map.getPitch())map.easeTo({pitch:0,duration:700});}
 }
-async function loadBuildings(){
- if(!mapReady||$('mapMode').value!=='3d')return;
- if(buildingController)buildingController.abort();
- const sequence=++buildingSequence;
- if(map.getZoom()<14.8){map.getSource('city-buildings').setData(emptyBuildings());buildingMessage('Zoom in to see 3D buildings.');return}
- const controller=new AbortController();buildingController=controller;
- const timeout=setTimeout(()=>controller.abort(),20000);
- // Limit each request to roughly 1.7 km east-west / 1.8 km north-south.
- const center=map.getCenter(),bounds=map.getBounds();
- const w=Math.max(bounds.getWest(),center.lng-0.012),e=Math.min(bounds.getEast(),center.lng+0.012);
- const south=Math.max(bounds.getSouth(),center.lat-0.008),n=Math.min(bounds.getNorth(),center.lat+0.008);
- const polygon=`POLYGON ((${w} ${south},${e} ${south},${e} ${n},${w} ${n},${w} ${south}))`;
- const u=new URL('https://data.calgary.ca/resource/cchr-krqg.json');
- u.searchParams.set('$select','polygon,rooftop_elev_z,grd_elev_max_z,struct_id');
- u.searchParams.set('$where',`intersects(polygon, '${polygon}')`);
- u.searchParams.set('$order','struct_id');u.searchParams.set('$limit','6001');
- buildingMessage('Loading nearby 3D buildings…');
- map.getSource('city-buildings').setData(emptyBuildings());
- try{
-  const response=await fetch(u,{signal:controller.signal});if(!response.ok)throw Error('Buildings HTTP '+response.status);
-  const rows=await response.json();if(!Array.isArray(rows))throw Error('Unexpected building data');
-  if(sequence!==buildingSequence||$('mapMode').value!=='3d')return;
-  const features=rows.slice(0,6000).flatMap(r=>{const roof=Number(r.rooftop_elev_z),ground=Number(r.grd_elev_max_z),height=roof-ground;
-   if(!r.polygon||!['Polygon','MultiPolygon'].includes(r.polygon.type)||!Number.isFinite(height)||ground<500||height<=0||height>400)return [];
-   return [{type:'Feature',geometry:r.polygon,properties:{height,id:r.struct_id}}];});
-  map.getSource('city-buildings').setData({type:'FeatureCollection',features});
-  buildingMessage(`${features.length.toLocaleString('en-CA')} nearby building shapes · Simplified roof heights${rows.length>6000?' · Zoom in for full local coverage':''} · Pan to load more`);
- }catch(error){if(sequence===buildingSequence&&$('mapMode').value==='3d')buildingMessage('Buildings unavailable. Pan or switch 2D / 3D to retry. Cameras remain available.');}
- finally{clearTimeout(timeout)}
-}
+function vertexCount(coords){return typeof coords[0]==='number'?1:coords.reduce((sum,c)=>sum+vertexCount(c),0)}
+function normalizeBuildingRows(rows){return rows.flatMap(r=>{const height=Number(r.rooftop_elev_z)-Number(r.grd_elev_max_z);if(r.struct_id==null||!r.polygon||!['Polygon','MultiPolygon'].includes(r.polygon.type)||!Array.isArray(r.polygon.coordinates)||!Number.isFinite(height)||Number(r.grd_elev_max_z)<500||height<=0||height>400)return [];return [{type:'Feature',geometry:r.polygon,properties:{height,id:String(r.struct_id)}}]})}
+function pruneBuildingCache(){let count=0,vertices=0;for(const tile of buildingTiles.values()){count+=tile.features.length;vertices+=tile.vertices}const candidates=[...buildingTiles.entries()].sort((a,b)=>Number(buildingWanted.has(a[0]))-Number(buildingWanted.has(b[0]))||a[1].used-b[1].used);while(buildingTiles.size>BUILDING_MAX_TILES||count>BUILDING_MAX_FEATURES||vertices>BUILDING_MAX_VERTICES){const item=candidates.shift();if(!item)break;buildingTiles.delete(item[0]);count-=item[1].features.length;vertices-=item[1].vertices}}
+function publishBuildings(){const unique=new Map();for(const tile of buildingTiles.values())for(const feature of tile.features)unique.set(feature.properties.id,feature);buildingShown=unique.size;if(mapReady)map.getSource('city-buildings').setData({type:'FeatureCollection',features:[...unique.values()]});buildingStatus()}
+function nearbyBuildingTiles(){const center=map.getCenter(),bounds=map.getBounds(),dx=BUILDING_GRID.lng,dy=BUILDING_GRID.lat;const w=Math.max(bounds.getWest(),center.lng-0.012),e=Math.min(bounds.getEast(),center.lng+0.012),south=Math.max(bounds.getSouth(),center.lat-0.008),n=Math.min(bounds.getNorth(),center.lat+0.008);const tiles=[];for(let x=Math.floor(w/dx);x<=Math.floor(e/dx);x++)for(let y=Math.floor(south/dy);y<=Math.floor(n/dy);y++)tiles.push({key:x+':'+y,x,y,distance:((x+.5)*dx-center.lng)**2+((y+.5)*dy-center.lat)**2});return tiles.sort((a,b)=>a.distance-b.distance).slice(0,36)}
+async function fetchBuildingTile(tile){const dx=BUILDING_GRID.lng,dy=BUILDING_GRID.lat,w=tile.x*dx,e=w+dx,south=tile.y*dy,n=south+dy;const polygon=`POLYGON ((${w} ${south},${e} ${south},${e} ${n},${w} ${n},${w} ${south}))`;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),30000);let rows=[],offset=0;try{while(true){const u=new URL('https://data.calgary.ca/resource/cchr-krqg.json');u.searchParams.set('$select','polygon,rooftop_elev_z,grd_elev_max_z,struct_id');u.searchParams.set('$where',`intersects(polygon, '${polygon}')`);u.searchParams.set('$order','struct_id');u.searchParams.set('$limit','1000');u.searchParams.set('$offset',String(offset));const response=await fetch(u,{signal:controller.signal});if(!response.ok)throw Error('Buildings HTTP '+response.status);const page=await response.json();if(!Array.isArray(page))throw Error('Unexpected building data');rows.push(...page);if(page.length<1000)break;offset+=page.length;if(offset>=20000)throw Error('Building tile too large');}return normalizeBuildingRows(rows)}finally{clearTimeout(timeout)}}
+function pumpBuildingQueue(){while(buildingWorkers<2&&buildingQueue.length&&buildingModeVisible()){const tile=buildingQueue.shift();if(buildingTiles.has(tile.key)||buildingPending.has(tile.key))continue;buildingWorkers++;buildingPending.add(tile.key);fetchBuildingTile(tile).then(features=>{const vertices=features.reduce((n,f)=>n+vertexCount(f.geometry.coordinates),0);buildingTiles.set(tile.key,{features,vertices,used:++buildingClock});pruneBuildingCache();publishBuildings()}).catch(()=>{buildingFailures++}).finally(()=>{buildingWorkers--;buildingPending.delete(tile.key);pumpBuildingQueue();buildingStatus()})}buildingStatus()}
+function loadBuildings(){if(!mapReady)return;updateBuildingVisibility();if(!buildingModeVisible()){buildingQueue=[];buildingStatus();return}const tiles=nearbyBuildingTiles();buildingWanted=new Set(tiles.map(t=>t.key));buildingFailures=0;for(const tile of tiles)if(buildingTiles.has(tile.key))buildingTiles.get(tile.key).used=++buildingClock;buildingQueue=tiles.filter(t=>!buildingTiles.has(t.key)&&!buildingPending.has(t.key));pumpBuildingQueue()}
 
 $('mapMode').onclick=()=>{$('mapMode').value=$('mapMode').value==='3d'?'2d':'3d';setMode()};
 

@@ -14,3 +14,5 @@ MapLibre GL JS 5.24.0: BSD-3-Clause; see MAPLIBRE-LICENSE.txt. Map: OpenStreetMa
 V1.2.1: Roadworks/Incidents controls at map top. Building status flows immediately below camera status, above footer credits. Existing installs: replace index.html and sw.js.
 
 V1.2.2: Roadworks markers now use 🚧. Closure × and incident ! are unchanged. Replace index.html and sw.js.
+
+V1.3.0: Session building tile cache; new areas load with max 2 concurrent requests. Loaded source remains intact during panning, zoom-out and 2D toggle. Below zoom 14.8 buildings are hidden, not deleted. Cache bounded to 64 tiles, 24,000 feature references and 400,000 coordinate vertices; least-recent tiles outside the requested area are evicted first. Duplicate building IDs are merged. Cache ends when the app page reloads. No new controls. Update index.html and sw.js.

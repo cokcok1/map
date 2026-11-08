@@ -10,14 +10,24 @@
 #north .dial{position:relative;display:flex;align-items:center;justify-content:center;width:30px;height:30px;transform:rotate(var(--bearing,0deg));transition:transform .12s linear}#north .dial:before{content:'';position:absolute;top:0;left:12px;border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:6px solid #dc5454}#north .dial:after{content:'';position:absolute;bottom:0;left:12px;border-left:3px solid transparent;border-right:3px solid transparent;border-top:6px solid #a8b0b5}#north b{font-size:12px;font-weight:700;color:#53636a;line-height:1}
 #viewer{top:66px;max-height:calc(100% - 80px)}
 @media(max-width:720px){#viewer{top:auto;max-height:70%}#north{right:10px;top:10px}}
+
+/* Let the map fill the available visual viewport, including compact iPhone layouts. */
+html{height:100%;height:100dvh}body{height:100%;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden}.layout{height:auto;min-height:0;overflow:hidden}.map-wrap{min-height:0}footer{position:relative;padding-bottom:calc(16px + env(safe-area-inset-bottom));padding-right:16px}#version{right:3px;bottom:2px;font-size:9px;color:rgba(135,143,148,.5);line-height:1;z-index:10}
+@media(max-width:720px){
+ .toolbar{display:grid;grid-template-columns:minmax(0,1fr) 76px 64px 76px;gap:4px;padding:8px max(8px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left));flex-wrap:nowrap}
+ .toolbar input{min-width:0;width:100%;font-size:16px;padding:8px;min-height:44px}
+ .toolbar select{min-width:0;width:100%;font-size:12px;padding:6px 2px;min-height:44px}
+ .toolbar button{min-width:0;width:100%;white-space:nowrap;font-size:11px;padding:6px 3px;min-height:44px}
+ #search{grid-column:1;grid-row:1}#quadrant{grid-column:2;grid-row:1}#listToggle{grid-column:3;grid-row:1}#reload{grid-column:4;grid-row:1}
+ .layout{height:auto;min-height:0}.map-wrap{height:100%}footer{font-size:10px;line-height:1.35;padding-top:5px}
+}
 </style></head><body>
 <header><div><h1>Calgary Traffic Cameras</h1><p>A clearer view of your route.</p></div><span class="badge">CITY CAMERA NETWORK</span></header>
-<div class="toolbar"><input id="search" type="search" aria-label="Search camera locations" placeholder="Search a road or intersection…"><select id="quadrant" aria-label="Filter by quadrant"><option value="">All areas</option><option>NW</option><option>NE</option><option>SW</option><option>SE</option></select><button id="listToggle" aria-expanded="false">Cameras</button><button id="install" title="Install app">Install app</button><button id="reload">Reload data</button></div>
+<div class="toolbar"><input id="search" type="search" aria-label="Search camera locations" placeholder="Search road…"><select id="quadrant" aria-label="Filter by quadrant"><option value="">All areas</option><option>NW</option><option>NE</option><option>SW</option><option>SE</option></select><button id="listToggle" aria-expanded="false">Cameras</button><button id="reload">Reload data</button></div>
 <main class="layout"><aside id="sidebar" class="mobile-hidden"><div class="list-head" id="count" role="status">Loading camera directory…</div><div id="list"></div></aside><div class="map-wrap"><div id="map" aria-label="Map of Calgary traffic cameras"></div><div class="map-tools"><button id="fit">All cameras</button></div><button id="north" type="button" title="Reset to north" aria-label="Reset map to north"><span class="dial" aria-hidden="true"><b>N</b></span></button><div id="notice" role="status">Connecting to City of Calgary open data…</div>
 <section id="viewer" hidden aria-label="Selected camera"><div class="viewer-head"><h2 id="cameraTitle"></h2><button id="close" aria-label="Close camera">×</button></div><div class="picture"><img id="photo" alt="" hidden><div id="imageState" role="status">Loading latest image…</div></div><div class="viewer-body"><div class="actions"><button id="refresh">Refresh image</button><a id="original" target="_blank" rel="noopener noreferrer">Open image ↗</a><label class="toggle"><input id="auto" type="checkbox" checked>Auto · 30s</label></div><p id="imageTime" aria-live="polite"></p><p>Latest available still image, not live video. Load time is not capture time. Cameras may be delayed or temporarily offline.</p></div></section></div></main>
 <footer>Camera data &amp; images: <a href="https://data.calgary.ca/Transportation-Transit/Traffic-Cameras/k7p9-kppz/about_data" target="_blank" rel="noopener noreferrer">City of Calgary Open Data</a> · <a href="https://www.calgary.ca/roads/conditions/traffic-cameras.html" target="_blank" rel="noopener noreferrer">Official cameras</a> · Internet required.</footer>
-<span id="version" aria-label="Version 1.0.2">v1.0.2</span>
-<dialog id="installHelp" style="max-width:340px;border:0;border-radius:14px;padding:24px;line-height:1.6"><h2 style="font-size:18px;margin-top:0">Install Calgary Traffic</h2><p id="installText"></p><button id="closeInstall">Close</button></dialog>
+<span id="version" aria-label="Version 1.0.3">v1.0.3</span>
 <script src="./maplibre-gl.js"></script>
 <script>
 'use strict';
@@ -35,18 +45,10 @@ function openCamera(c){selected=c;$('cameraTitle').textContent=c.name;$('photo')
 function refreshImage(){if(!selected||document.hidden)return;clearTimeout(imageTimer);const id=++requestId;$('photo').hidden=true;$('imageState').hidden=false;$('imageState').textContent='Loading latest image…';$('imageTime').textContent='Requesting latest available still…';const img=new Image();const u=new URL(selected.url);u.searchParams.set('_',Date.now());const finish=(ok)=>{if(id!==requestId)return;clearTimeout(imageTimer);if(ok){$('photo').src=img.src;$('photo').hidden=false;$('imageState').hidden=true;$('imageTime').textContent='Image loaded: '+new Intl.DateTimeFormat('en-CA',{timeZone:'America/Edmonton',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}).format(new Date())+' · Calgary time'}else{$('imageState').textContent='Image unavailable. Try Refresh image or Open image.';$('imageTime').textContent='The camera may be offline or the connection may be unavailable.'}};img.onload=()=>finish(true);img.onerror=()=>finish(false);imageTimer=setTimeout(()=>finish(false),15000);img.src=u.href}
 $('north').onclick=()=>{if(map)map.easeTo({bearing:0,duration:500})};
 $('search').oninput=filter;$('quadrant').onchange=filter;$('fit').onclick=fit;$('reload').onclick=load;$('refresh').onclick=refreshImage;$('close').onclick=()=>{selected=null;++requestId;clearTimeout(imageTimer);$('viewer').hidden=true;filter()};$('listToggle').onclick=()=>{const hidden=$('sidebar').classList.toggle('mobile-hidden');$('listToggle').setAttribute('aria-expanded',String(!hidden))};document.addEventListener('keydown',e=>{if(e.key==='Escape')$('close').click()});document.addEventListener('visibilitychange',()=>{if(!document.hidden&&selected&&$('auto').checked)refreshImage()});setInterval(()=>{if(selected&&$('auto').checked&&!document.hidden)refreshImage()},30000);
-let installPrompt=null;
-window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();installPrompt=event;});
-window.addEventListener('appinstalled',()=>{$('install').hidden=true;installPrompt=null;});
-if(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)$('install').hidden=true;
-$('install').onclick=async()=>{
- if(installPrompt){const prompt=installPrompt;installPrompt=null;await prompt.prompt();await prompt.userChoice;return;}
- $('installText').textContent=location.protocol==='file:'?'To install, upload all app files to GitHub Pages or another HTTPS website, then open the website. Local files cannot be installed as a PWA.':/iPad|iPhone|iPod/.test(navigator.userAgent)?'In Safari, tap Share, then Add to Home Screen. Enable Open as Web App if offered, then tap Add.':'Open your browser menu and choose Install app or Add to Home screen. Desktop Safari: use File → Add to Dock. Installation options depend on your browser.';
- $('installHelp').showModal();
-};
-$('closeInstall').onclick=()=>$('installHelp').close();
 if('serviceWorker' in navigator&&['https:','http:'].includes(location.protocol)){
- window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(error=>console.warn('Offline app setup unavailable:',error)));
+ let hasController=!!navigator.serviceWorker.controller;
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hasController)location.reload();else hasController=true;});
+ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').then(reg=>reg.update()).catch(error=>console.warn('Offline app setup unavailable:',error)));
 }
 window.addEventListener('offline',()=>notify('You are offline. Camera images and map tiles need internet. A saved camera directory may be available.'));
 window.addEventListener('online',()=>{notify('Connection restored. Reload data to update the directory.');if(selected)refreshImage();});

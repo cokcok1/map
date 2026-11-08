@@ -1,6 +1,6 @@
 // Only the local application shell is cached. Never cache camera images or map tiles.
 const PREFIX='calgary-traffic-'+encodeURIComponent(self.registration.scope)+'-';
-const CACHE=PREFIX+'v1.2.0';
+const CACHE=PREFIX+'v1.2.1';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./maplibre-gl.js','./maplibre-gl.css','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./apple-touch-icon.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS.map(path=>new Request(path,{cache:'reload'})))).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith(PREFIX)&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
